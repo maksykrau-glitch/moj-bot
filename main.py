@@ -61,7 +61,8 @@ async def mute(
             reason=reason
         )
 
-        embed = discord.Embed(
+        # 🟢 TABELKA ROZPOCZĘCIA MUTE
+        embed_start = discord.Embed(
             description=(
                 f"**{user.display_name} został wyciszony.**\n\n"
                 f"**Na ile minut:** {minutes}\n"
@@ -72,19 +73,22 @@ async def mute(
             color=discord.Color.green()
         )
 
-        await kanal_logow.send(embed=embed)
+        await kanal_logow.send(embed=embed_start)
 
+        # Brak zwykłej wiadomości po /mute
         await interaction.response.send_message(
-            f"🔇 {user.mention} został wyciszony na **{minutes} min**\n"
-            f"Powód: {reason}"
+            "✅ Mute został nadany",
+            ephemeral=True
         )
 
+        # Czekanie do końca mute
         await asyncio.sleep(minutes * 60)
 
-        embed_koniec = discord.Embed(
+        # 🔴 TABELKA ZAKOŃCZENIA MUTE
+        embed_end = discord.Embed(
             description=(
                 f"**Mute użytkownika {user.display_name} skończył się.**\n\n"
-                f"**Na ile minut:** {minutes}\n"
+                f"**Ile trwał mute:** {minutes} minut\n"
                 f"**Za co:** {reason}\n\n"
                 f"**Moderator:** {interaction.user.display_name}\n"
                 f"**Jaki bot:** {bot.user.display_name}"
@@ -92,7 +96,7 @@ async def mute(
             color=discord.Color.red()
         )
 
-        await kanal_logow.send(embed=embed_koniec)
+        await kanal_logow.send(embed=embed_end)
 
     except discord.Forbidden:
         if not interaction.response.is_done():
