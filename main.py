@@ -8,7 +8,6 @@ from datetime import timedelta
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Zapamiętujemy informacje o aktywnych karach
 aktywne_mute = {}
 aktywne_bany = {}
 
@@ -29,10 +28,6 @@ def znajdz_dziennik_kar(guild):
 
     return None
 
-
-# =========================
-# MUTE
-# =========================
 
 @bot.tree.command(name="mute", description="Wycisza użytkownika")
 @app_commands.describe(
@@ -95,7 +90,6 @@ async def mute(
 
         await asyncio.sleep(minutes * 60)
 
-        # Sprawdzamy czy mute nadal istnieje
         member = interaction.guild.get_member(user.id)
 
         if member and member.is_timed_out():
@@ -124,10 +118,6 @@ async def mute(
                 ephemeral=True
             )
 
-
-# =========================
-# UNMUTE
-# =========================
 
 @bot.tree.command(name="unmute", description="Usuwa wyciszenie użytkownika")
 @app_commands.describe(
@@ -190,10 +180,6 @@ async def unmute(
         )
 
 
-# =========================
-# BAN
-# =========================
-
 @bot.tree.command(name="ban", description="Banuje użytkownika")
 @app_commands.describe(
     user="Osoba do zbanowania",
@@ -246,10 +232,6 @@ async def ban(
             ephemeral=True
         )
 
-
-# =========================
-# UNBAN
-# =========================
 
 @bot.tree.command(name="unban", description="Usuwa bana użytkownika")
 @app_commands.describe(
@@ -324,10 +306,6 @@ async def unban(
         )
 
 
-# =========================
-# KICK
-# =========================
-
 @bot.tree.command(name="kick", description="Wyrzuca użytkownika z serwera")
 @app_commands.describe(
     user="Osoba do wyrzucenia",
@@ -376,10 +354,6 @@ async def kick(
             ephemeral=True
         )
 
-
-# =========================
-# BŁĘDY UPRAWNIEŃ
-# =========================
 
 @mute.error
 @unmute.error
