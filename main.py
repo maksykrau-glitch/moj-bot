@@ -14,6 +14,7 @@ aktywne_bany = {}
 
 @bot.event
 async def on_ready():
+    bot.tree.clear_commands(guild=None)
     await bot.tree.sync()
     print(f"Bot online: {bot.user}")
 
