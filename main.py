@@ -14,8 +14,13 @@ aktywne_bany = {}
 
 @bot.event
 async def on_ready():
-    bot.tree.clear_commands(guild=None)
-    await bot.tree.sync()
+    guild = discord.Object(id=1486819364328968503)
+
+    bot.tree.clear_commands(guild=guild)
+    bot.tree.copy_global_to(guild=guild)
+
+    await bot.tree.sync(guild=guild)
+
     print(f"Bot online: {bot.user}")
 
 
