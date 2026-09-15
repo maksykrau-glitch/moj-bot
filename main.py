@@ -8,6 +8,10 @@ from datetime import timedelta
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# Zapamiętujemy informacje o aktywnych karach
+aktywne_mute = {}
+aktywne_bany = {}
+
 
 @bot.event
 async def on_ready():
@@ -25,6 +29,10 @@ def znajdz_dziennik_kar(guild):
 
     return None
 
+
+# =========================
+# MUTE
+# =========================
 
 @bot.tree.command(name="mute", description="Wycisza użytkownika")
 @app_commands.describe(
@@ -46,9 +54,9 @@ async def mute(
         )
         return
 
-    kanal_logow = znajdz_dziennik_kar(interaction.guild)
+    kanal = znajdz_dziennik_kar(interaction.guild)
 
-    if kanal_logow is None:
+    if kanal is None:
         await interaction.response.send_message(
             "❌ Nie znaleziono kanału dziennik-kar",
             ephemeral=True
@@ -61,8 +69,13 @@ async def mute(
             reason=reason
         )
 
-        # 🟢 TABELKA ROZPOCZĘCIA MUTE
-        embed_start = discord.Embed(
+        aktywne_mute[user.id] = {
+            "minutes": minutes,
+            "reason": reason,
+            "moderator": interaction.user.display_name
+        }
+
+        embed = discord.Embed(
             description=(
                 f"**{user.display_name} został wyciszony.**\n\n"
                 f"**Na ile minut:** {minutes}\n"
@@ -73,30 +86,36 @@ async def mute(
             color=discord.Color.green()
         )
 
-        await kanal_logow.send(embed=embed_start)
+        await kanal.send(embed=embed)
 
-        # Brak zwykłej wiadomości po /mute
         await interaction.response.send_message(
-            "✅ Mute został nadany",
+            "✅ Użytkownik został wyciszony",
             ephemeral=True
         )
 
-        # Czekanie do końca mute
         await asyncio.sleep(minutes * 60)
 
-        # 🔴 TABELKA ZAKOŃCZENIA MUTE
-        embed_end = discord.Embed(
-            description=(
-                f"**Mute użytkownika {user.display_name} skończył się.**\n\n"
-                f"**Ile trwał mute:** {minutes} minut\n"
-                f"**Za co:** {reason}\n\n"
-                f"**Moderator:** {interaction.user.display_name}\n"
-                f"**Jaki bot:** {bot.user.display_name}"
-            ),
-            color=discord.Color.red()
-        )
+        # Sprawdzamy czy mute nadal istnieje
+        member = interaction.guild.get_member(user.id)
 
-        await kanal_logow.send(embed=embed_end)
+        if member and member.is_timed_out():
+            await member.timeout(None, reason="Mute zakończony")
+
+        dane = aktywne_mute.pop(user.id, None)
+
+        if dane:
+            embed_koniec = discord.Embed(
+                description=(
+                    f"**Mute użytkownika {user.display_name} skończył się.**\n\n"
+                    f"**Ile trwał mute:** {dane['minutes']} minut\n"
+                    f"**Za co:** {dane['reason']}\n\n"
+                    f"**Moderator:** {dane['moderator']}\n"
+                    f"**Jaki bot:** {bot.user.display_name}"
+                ),
+                color=discord.Color.red()
+            )
+
+            await kanal.send(embed=embed_koniec)
 
     except discord.Forbidden:
         if not interaction.response.is_done():
@@ -105,19 +124,272 @@ async def mute(
                 ephemeral=True
             )
 
-    except Exception as e:
-        if not interaction.response.is_done():
-            await interaction.response.send_message(
-                f"❌ Wystąpił błąd: `{e}`",
-                ephemeral=True
+
+# =========================
+# UNMUTE
+# =========================
+
+@bot.tree.command(name="unmute", description="Usuwa wyciszenie użytkownika")
+@app_commands.describe(
+    user="Osoba, której chcesz usunąć mute"
+)
+@app_commands.checks.has_permissions(moderate_members=True)
+async def unmute(
+    interaction: discord.Interaction,
+    user: discord.Member
+):
+    kanal = znajdz_dziennik_kar(interaction.guild)
+
+    if kanal is None:
+        await interaction.response.send_message(
+            "❌ Nie znaleziono kanału dziennik-kar",
+            ephemeral=True
+        )
+        return
+
+    try:
+        await user.timeout(
+            None,
+            reason=f"Unmute przez {interaction.user.display_name}"
+        )
+
+        dane = aktywne_mute.pop(user.id, None)
+
+        if dane:
+            embed = discord.Embed(
+                description=(
+                    f"**Mute użytkownika {user.display_name} został usunięty.**\n\n"
+                    f"**Ile trwał mute:** {dane['minutes']} minut\n"
+                    f"**Za co:** {dane['reason']}\n\n"
+                    f"**Moderator:** {dane['moderator']}\n"
+                    f"**Jaki bot:** {bot.user.display_name}"
+                ),
+                color=discord.Color.red()
+            )
+        else:
+            embed = discord.Embed(
+                description=(
+                    f"**Mute użytkownika {user.display_name} został usunięty.**\n\n"
+                    f"**Moderator:** {interaction.user.display_name}\n"
+                    f"**Jaki bot:** {bot.user.display_name}"
+                ),
+                color=discord.Color.red()
             )
 
+        await kanal.send(embed=embed)
+
+        await interaction.response.send_message(
+            "✅ Mute został usunięty",
+            ephemeral=True
+        )
+
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            "❌ Bot nie ma odpowiednich uprawnień",
+            ephemeral=True
+        )
+
+
+# =========================
+# BAN
+# =========================
+
+@bot.tree.command(name="ban", description="Banuje użytkownika")
+@app_commands.describe(
+    user="Osoba do zbanowania",
+    reason="Powód bana"
+)
+@app_commands.checks.has_permissions(ban_members=True)
+async def ban(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    reason: str = "Brak powodu"
+):
+    kanal = znajdz_dziennik_kar(interaction.guild)
+
+    if kanal is None:
+        await interaction.response.send_message(
+            "❌ Nie znaleziono kanału dziennik-kar",
+            ephemeral=True
+        )
+        return
+
+    try:
+        aktywne_bany[user.id] = {
+            "reason": reason,
+            "moderator": interaction.user.display_name,
+            "nick": user.display_name
+        }
+
+        await user.ban(reason=reason)
+
+        embed = discord.Embed(
+            description=(
+                f"**Użytkownik {user.display_name} dostał bana.**\n\n"
+                f"**Za co:** {reason}\n\n"
+                f"**Moderator:** {interaction.user.display_name}\n"
+                f"**Jaki bot:** {bot.user.display_name}"
+            ),
+            color=discord.Color.green()
+        )
+
+        await kanal.send(embed=embed)
+
+        await interaction.response.send_message(
+            "✅ Użytkownik został zbanowany",
+            ephemeral=True
+        )
+
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            "❌ Bot nie ma odpowiednich uprawnień",
+            ephemeral=True
+        )
+
+
+# =========================
+# UNBAN
+# =========================
+
+@bot.tree.command(name="unban", description="Usuwa bana użytkownika")
+@app_commands.describe(
+    user_id="ID użytkownika"
+)
+@app_commands.checks.has_permissions(ban_members=True)
+async def unban(
+    interaction: discord.Interaction,
+    user_id: str
+):
+    kanal = znajdz_dziennik_kar(interaction.guild)
+
+    if kanal is None:
+        await interaction.response.send_message(
+            "❌ Nie znaleziono kanału dziennik-kar",
+            ephemeral=True
+        )
+        return
+
+    try:
+        user = await bot.fetch_user(int(user_id))
+
+        await interaction.guild.unban(
+            user,
+            reason=f"Unban przez {interaction.user.display_name}"
+        )
+
+        dane = aktywne_bany.pop(user.id, None)
+
+        if dane:
+            nick = dane["nick"]
+            reason = dane["reason"]
+            moderator = dane["moderator"]
+        else:
+            nick = user.display_name
+            reason = "Brak zapisanych informacji"
+            moderator = interaction.user.display_name
+
+        embed = discord.Embed(
+            description=(
+                f"**Ban użytkownika {nick} został usunięty.**\n\n"
+                f"**Za co:** {reason}\n\n"
+                f"**Moderator:** {moderator}\n"
+                f"**Jaki bot:** {bot.user.display_name}"
+            ),
+            color=discord.Color.red()
+        )
+
+        await kanal.send(embed=embed)
+
+        await interaction.response.send_message(
+            "✅ Ban został usunięty",
+            ephemeral=True
+        )
+
+    except ValueError:
+        await interaction.response.send_message(
+            "❌ ID użytkownika musi być liczbą",
+            ephemeral=True
+        )
+
+    except discord.NotFound:
+        await interaction.response.send_message(
+            "❌ Nie znaleziono tego bana",
+            ephemeral=True
+        )
+
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            "❌ Bot nie ma odpowiednich uprawnień",
+            ephemeral=True
+        )
+
+
+# =========================
+# KICK
+# =========================
+
+@bot.tree.command(name="kick", description="Wyrzuca użytkownika z serwera")
+@app_commands.describe(
+    user="Osoba do wyrzucenia",
+    reason="Powód wyrzucenia"
+)
+@app_commands.checks.has_permissions(kick_members=True)
+async def kick(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    reason: str = "Brak powodu"
+):
+    kanal = znajdz_dziennik_kar(interaction.guild)
+
+    if kanal is None:
+        await interaction.response.send_message(
+            "❌ Nie znaleziono kanału dziennik-kar",
+            ephemeral=True
+        )
+        return
+
+    try:
+        nick = user.display_name
+
+        await user.kick(reason=reason)
+
+        embed = discord.Embed(
+            description=(
+                f"**Użytkownik {nick} został wyrzucony z serwera.**\n\n"
+                f"**Za co:** {reason}\n\n"
+                f"**Moderator:** {interaction.user.display_name}\n"
+                f"**Jaki bot:** {bot.user.display_name}"
+            ),
+            color=discord.Color.green()
+        )
+
+        await kanal.send(embed=embed)
+
+        await interaction.response.send_message(
+            "✅ Użytkownik został wyrzucony",
+            ephemeral=True
+        )
+
+    except discord.Forbidden:
+        await interaction.response.send_message(
+            "❌ Bot nie ma odpowiednich uprawnień",
+            ephemeral=True
+        )
+
+
+# =========================
+# BŁĘDY UPRAWNIEŃ
+# =========================
 
 @mute.error
-async def mute_error(interaction: discord.Interaction, error):
+@unmute.error
+@ban.error
+@unban.error
+@kick.error
+async def command_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.errors.MissingPermissions):
         await interaction.response.send_message(
-            "Nie masz uprawnień do wyciszania użytkowników",
+            "❌ Nie masz odpowiednich uprawnień do tej komendy",
             ephemeral=True
         )
 
