@@ -1,51 +1,89 @@
-import os
-import discord
-from discord import app_commands
-from discord.ext import commands
-from datetime import timedelta
-
-intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-@bot.event
-async def on_ready():
-    await bot.tree.sync()
-    print(f"Bot online: {bot.user}")
-
-@bot.tree.command(name="mute", description="Wycisza użytkownika")
-@app_commands.describe(
-    user="Osoba do wyciszenia",
-    minutes="Czas w minutach",
-    reason="Powód wyciszenia"
-)
+@bot.tree.command(name="wycisz", description="Wycisza użytkownika")
 @app_commands.checks.has_permissions(moderate_members=True)
-async def mute(
+async def wycisz(
     interaction: discord.Interaction,
-    user: discord.Member,
-    minutes: int,
-    reason: str = "Brak powodu"
+    uzytkownik: discord.Member,
+    minuty: int,
+    powod: str
 ):
-    if minutes < 1:
-        await interaction.response.send_message("Czas musi wynosić minimum 1 minutę", ephemeral=True)
-        return
+    try:
+        if minuty <= 0:
+            await interaction.response.send_message(
+                "❌ Liczba minut musi być większa niż 0",
+                ephemeral=True
+            )
+            return
 
-    await user.timeout(timedelta(minutes=minutes), reason=reason)
+        czas = datetime.timedelta(minutes=minuty)
 
-    await interaction.response.send_message(
-        f"🔇 {user.mention} został wyciszony na **{minutes} min**\nPowód: {reason}"
-    )
+        # Wyciszenie użytkownika
+        await uzytkownik.timeout(czas, reason=powod)
 
-@mute.error
-async def mute_error(interaction: discord.Interaction, error):
-    if isinstance(error, app_commands.errors.MissingPermissions):
+        # Szukanie kanału dziennik kar
+        kanal_logow = None
+
+        for kanal in interaction.guild.text_channels:
+            nazwa = kanal.name.lower()
+            oczyszczona = "".join(c for c in nazwa if c.isalnum())
+
+            if "dziennikkar" in oczyszczona:
+                kanal_logow = kanal
+                break
+
+        if kanal_logow is None:
+            await interaction.response.send_message(
+                "❌ Nie znaleziono kanału dziennik kar",
+                ephemeral=True
+            )
+            return
+
+        # 🟢 TABELKA ROZPOCZĘCIA MUTE
+        embed = discord.Embed(
+            description=(
+                f"**{uzytkownik.display_name} został wyciszony.**\n\n"
+                f"**Na ile minut:** {minuty}\n"
+                f"**Za co:** {powod}\n\n"
+                f"**Moderator:** {interaction.user.display_name}\n"
+                f"**Jaki bot:** {bot.user.display_name}"
+            ),
+            color=discord.Color.green()
+        )
+
+        await kanal_logow.send(embed=embed)
+
+        # Odpowiedź tylko dla moderatora
         await interaction.response.send_message(
-            "Nie masz uprawnień do wyciszania użytkowników",
+            f"✅ Wyciszono **{uzytkownik.display_name}** na **{minuty} minut**",
             ephemeral=True
         )
 
-TOKEN = os.getenv("TOKEN")
+        # Czekanie aż mute się skończy
+        await asyncio.sleep(minuty * 60)
 
-if not TOKEN:
-    raise RuntimeError("Brak TOKEN w zmiennych środowiskowych")
+        # 🔴 TABELKA ZAKOŃCZENIA MUTE
+        embed_koniec = discord.Embed(
+            description=(
+                f"**Mute użytkownika {uzytkownik.display_name} skończył się.**\n\n"
+                f"**Na ile minut:** {minuty}\n"
+                f"**Za co:** {powod}\n\n"
+                f"**Moderator:** {interaction.user.display_name}\n"
+                f"**Jaki bot:** {bot.user.display_name}"
+            ),
+            color=discord.Color.red()
+        )
 
-bot.run(TOKEN)
+        await kanal_logow.send(embed=embed_koniec)
+
+    except discord.Forbidden:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                "❌ Nie mogę wyciszyć tego użytkownika",
+                ephemeral=True
+            )
+
+    except Exception as e:
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                f"❌ Wystąpił błąd: `{e}`",
+                ephemeral=True
+            )
