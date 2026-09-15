@@ -1,4 +1,53 @@
-@bot.tree.command(name="wycisz", description="Wycisza użytkownika")
+import os
+import asyncio
+import datetime
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+TOKEN = os.getenv("TOKEN")
+
+intents = discord.Intents.default()
+
+bot = commands.Bot(
+    command_prefix="!",
+    intents=intents
+)
+
+
+# =========================
+# BOT START
+# =========================
+
+@bot.event
+async def on_ready():
+    await bot.tree.sync()
+    print(f"Zalogowano jako {bot.user}")
+
+
+# =========================
+# ZNAJDOWANIE DZIENNIKA KAR
+# =========================
+
+def znajdz_dziennik_kar(guild):
+    for kanal in guild.text_channels:
+        nazwa = kanal.name.lower()
+        oczyszczona = "".join(c for c in nazwa if c.isalnum())
+
+        if "dziennikkar" in oczyszczona:
+            return kanal
+
+    return None
+
+
+# =========================
+# WYCISZENIE
+# =========================
+
+@bot.tree.command(
+    name="wycisz",
+    description="Wycisza użytkownika"
+)
 @app_commands.checks.has_permissions(moderate_members=True)
 async def wycisz(
     interaction: discord.Interaction,
@@ -6,38 +55,32 @@ async def wycisz(
     minuty: int,
     powod: str
 ):
-    try:
-        if minuty <= 0:
-            await interaction.response.send_message(
-                "❌ Liczba minut musi być większa niż 0",
-                ephemeral=True
-            )
-            return
+    if minuty <= 0:
+        await interaction.response.send_message(
+            "❌ Liczba minut musi być większa niż 0",
+            ephemeral=True
+        )
+        return
 
+    kanal_logow = znajdz_dziennik_kar(interaction.guild)
+
+    if kanal_logow is None:
+        await interaction.response.send_message(
+            "❌ Nie znaleziono kanału dziennik-kar",
+            ephemeral=True
+        )
+        return
+
+    try:
         czas = datetime.timedelta(minutes=minuty)
 
-        # Wyciszenie użytkownika
-        await uzytkownik.timeout(czas, reason=powod)
+        await uzytkownik.timeout(
+            czas,
+            reason=powod
+        )
 
-        # Szukanie kanału dziennik kar
-        kanal_logow = None
+        # 🟢 MUTE ROZPOCZĘTY
 
-        for kanal in interaction.guild.text_channels:
-            nazwa = kanal.name.lower()
-            oczyszczona = "".join(c for c in nazwa if c.isalnum())
-
-            if "dziennikkar" in oczyszczona:
-                kanal_logow = kanal
-                break
-
-        if kanal_logow is None:
-            await interaction.response.send_message(
-                "❌ Nie znaleziono kanału dziennik kar",
-                ephemeral=True
-            )
-            return
-
-        # 🟢 TABELKA ROZPOCZĘCIA MUTE
         embed = discord.Embed(
             description=(
                 f"**{uzytkownik.display_name} został wyciszony.**\n\n"
@@ -51,16 +94,17 @@ async def wycisz(
 
         await kanal_logow.send(embed=embed)
 
-        # Odpowiedź tylko dla moderatora
         await interaction.response.send_message(
             f"✅ Wyciszono **{uzytkownik.display_name}** na **{minuty} minut**",
             ephemeral=True
         )
 
-        # Czekanie aż mute się skończy
+        # Czekanie na koniec mute
+
         await asyncio.sleep(minuty * 60)
 
-        # 🔴 TABELKA ZAKOŃCZENIA MUTE
+        # 🔴 MUTE ZAKOŃCZONY
+
         embed_koniec = discord.Embed(
             description=(
                 f"**Mute użytkownika {uzytkownik.display_name} skończył się.**\n\n"
@@ -77,7 +121,7 @@ async def wycisz(
     except discord.Forbidden:
         if not interaction.response.is_done():
             await interaction.response.send_message(
-                "❌ Nie mogę wyciszyć tego użytkownika",
+                "❌ Nie mam odpowiednich uprawnień",
                 ephemeral=True
             )
 
@@ -87,3 +131,10 @@ async def wycisz(
                 f"❌ Wystąpił błąd: `{e}`",
                 ephemeral=True
             )
+
+
+# =========================
+# URUCHOMIENIE
+# =========================
+
+bot.run(TOKEN)
