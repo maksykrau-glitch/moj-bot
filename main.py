@@ -180,13 +180,13 @@ async def unmute(
         )
 
 
-@bot.tree.command(name="ban", description="Banuje użytkownika")
+@bot.tree.command(name="bann", description="Banuje użytkownika")
 @app_commands.describe(
     user="Osoba do zbanowania",
     reason="Powód bana"
 )
 @app_commands.checks.has_permissions(ban_members=True)
-async def ban(
+async def bann(
     interaction: discord.Interaction,
     user: discord.Member,
     reason: str = "Brak powodu"
@@ -233,12 +233,12 @@ async def ban(
         )
 
 
-@bot.tree.command(name="unban", description="Usuwa bana użytkownika")
+@bot.tree.command(name="unnban", description="Usuwa bana użytkownika")
 @app_commands.describe(
     user_id="ID użytkownika"
 )
 @app_commands.checks.has_permissions(ban_members=True)
-async def unban(
+async def unnban(
     interaction: discord.Interaction,
     user_id: str
 ):
@@ -306,13 +306,13 @@ async def unban(
         )
 
 
-@bot.tree.command(name="kick", description="Wyrzuca użytkownika z serwera")
+@bot.tree.command(name="kickk", description="Wyrzuca użytkownika z serwera")
 @app_commands.describe(
     user="Osoba do wyrzucenia",
     reason="Powód wyrzucenia"
 )
 @app_commands.checks.has_permissions(kick_members=True)
-async def kick(
+async def kickk(
     interaction: discord.Interaction,
     user: discord.Member,
     reason: str = "Brak powodu"
@@ -357,9 +357,9 @@ async def kick(
 
 @mute.error
 @unmute.error
-@ban.error
-@unban.error
-@kick.error
+@bann.error
+@unnban.error
+@kickk.error
 async def command_error(interaction: discord.Interaction, error):
     if isinstance(error, app_commands.errors.MissingPermissions):
         await interaction.response.send_message(
