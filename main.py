@@ -1,7 +1,7 @@
 import os
 import asyncio
 import datetime
-import add_commands
+import discord
 from discord import app_commands
 from discord.ext import commands
 
